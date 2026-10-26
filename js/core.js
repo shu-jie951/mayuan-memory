@@ -82,6 +82,8 @@
     const questionIds = [...new Set(value.questionIds.filter(id => validIds.has(id) && id.startsWith("c")))];
     if (!questionIds.length) return null;
     const answers = sanitizeAnswers(value.answers);
+    const graded = {};
+    for (const id of questionIds) if (value.graded && value.graded[id] === true) graded[id] = true;
     const startedAt = clamp(value.startedAt, 0, 9999999999999, Date.now());
     const timeLimit = Math.round(clamp(value.timeLimit, 0, 300 * 60000, 0));
     return {
@@ -89,6 +91,7 @@
       questionIds,
       index: Math.round(clamp(value.index, 0, questionIds.length - 1, 0)),
       answers,
+      graded,
       flagged: Array.isArray(value.flagged) ? value.flagged.filter(id => questionIds.includes(id)) : [],
       startedAt,
       elapsed: Math.round(clamp(value.elapsed, 0, 86400000, 0)),

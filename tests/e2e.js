@@ -124,10 +124,15 @@ async function main() {
         const state = JSON.parse(localStorage.getItem(MemoryCore.STORAGE_KEY));
         const exam = state.activeExam;
         const id = exam.questionIds[exam.index];
+        if (exam.graded && exam.graded[id]) return;
         const question = QUESTION_BANK.questions.find(item => item.id === id);
         for (const letter of question.answer) {
           const input = document.querySelector('input[data-exam-answer="' + id + '"][value="' + letter + '"]');
           if (input && !input.checked) input.click();
+        }
+        if (question.type === "multiple") {
+          const confirm = document.querySelector('[data-action="confirm-exam-answer"]');
+          if (confirm && !confirm.disabled) confirm.click();
         }
       })()`);
       await pause(60);
@@ -166,6 +171,35 @@ async function main() {
     await click('[data-action="continue-learning"]');
     assert.equal(await cdp.evaluate("document.querySelector('.question-text').textContent"), secondQuestion);
     passed("刷新后继续学习保持原题号");
+
+    await click('.bottom-nav [data-nav="home"]');
+    await click('[data-action="start-study"][data-mode="choice"]');
+    await click('[data-action="pick-study"][data-option="A"]');
+    assert.ok(await cdp.evaluate("!!document.querySelector('.verdict--wrong')"));
+    assert.ok(await cdp.evaluate("!!document.querySelector('.option-row.is-wrong-answer')"));
+    assert.ok(await cdp.evaluate("!!document.querySelector('.option-row.is-answer')"));
+    assert.ok((await cdp.evaluate("document.querySelector('.verdict').textContent")).includes("正确答案 B"));
+    await noOverflow("375px 背诵判分-答错");
+    await screenshot("mobile-choice-wrong.png");
+    await click('[data-action="rate"][data-rating="again"]');
+    await click('[data-action="pick-study"][data-option="C"]');
+    assert.ok(await cdp.evaluate("!!document.querySelector('.verdict--correct')"));
+    assert.equal(await cdp.evaluate("document.querySelectorAll('.option-row.is-answer').length"), 1);
+    await click('[data-action="rate"][data-rating="good"]');
+    passed("背诵单选即时判分：答错标红、答对标绿并显示答案");
+
+    await cdp.evaluate(`(() => {
+      const select = document.querySelector('select[data-filter="type"]');
+      select.value = "multiple";
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    })()`);
+    const multiAnswer = await cdp.evaluate("(() => { const stem = document.querySelector('.question-text').textContent; return QUESTION_BANK.questions.find(q => q.kind === 'choice' && q.type === 'multiple' && q.question === stem).answer.join(''); })()");
+    for (const letter of multiAnswer) await click(`[data-action="pick-study"][data-option="${letter}"]`);
+    await click('[data-action="submit-study-answer"]');
+    assert.ok(await cdp.evaluate("!!document.querySelector('.verdict--correct')"));
+    assert.equal(await cdp.evaluate("document.querySelectorAll('.option-row.is-answer').length"), multiAnswer.length);
+    await click('[data-action="rate"][data-rating="hard"]');
+    passed("背诵多选勾选后提交判分");
 
     await click('.bottom-nav [data-nav="home"]');
     await click('[data-action="start-study"][data-mode="subjective"]');
@@ -208,11 +242,13 @@ async function main() {
     assert.ok((await storedState()).activeExam, "刷新后活动考试存在");
     assert.deepEqual((await storedState()).activeExam.answers[answeredId], expectedAnswers);
     await click('[data-action="continue-learning"]');
-    assert.ok(await cdp.evaluate("document.querySelectorAll('.exam-option input:checked').length > 0"));
-    passed("十题智能组卷与刷新断点续答");
+    assert.ok(await cdp.evaluate("!!document.querySelector('.verdict')"), "刷新后首题保持已判分状态");
+    assert.ok(await cdp.evaluate("document.querySelectorAll('.exam-option.is-locked').length > 0"));
+    passed("十题智能组卷、逐题判分与刷新断点续答");
 
     for (let index = 0; index < 10; index += 1) {
       await answerCurrent();
+      assert.ok(await cdp.evaluate("!!document.querySelector('.verdict')"), `第 ${index + 1} 题作答后即时判分`);
       if (index < 9) await click('[data-action="exam-next"]');
     }
     await click('[data-action="submit-exam"]');
@@ -226,7 +262,12 @@ async function main() {
     assert.equal(state.examHistory[0].wrongIds.length, 0);
     await noOverflow("375px 成绩页");
     await screenshot("mobile-result.png");
-    passed("完整作答、确认交卷、百分成绩与历史记录");
+    assert.ok(await cdp.evaluate("!!document.querySelector('.analysis')"), "成绩页包含分析模块");
+    assert.ok((await cdp.evaluate("document.querySelector('.analysis').textContent")).includes("章节正确率"));
+    assert.ok(await cdp.evaluate("document.querySelectorAll('.analysis-row').length > 0"));
+    await noOverflow("375px 成绩分析");
+    await screenshot("mobile-analysis.png");
+    passed("完整作答、确认交卷、百分成绩、历史记录与成绩分析");
 
     await click('[data-action="toggle-review"]');
     assert.equal(await cdp.evaluate("document.querySelectorAll('.review-item').length"), 10);
@@ -273,7 +314,9 @@ async function main() {
     })()`);
     await click('[data-action="start-exam"]');
     await cdp.evaluate("document.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', bubbles: true }))");
-    assert.ok(await cdp.evaluate("document.querySelectorAll('.exam-option input:checked').length > 0"));
+    const firstType = await cdp.evaluate("(() => { const exam = JSON.parse(localStorage.getItem(MemoryCore.STORAGE_KEY)).activeExam; return QUESTION_BANK.questions.find(q => q.id === exam.questionIds[exam.index]).type; })()");
+    if (firstType === "multiple") await cdp.evaluate("document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))");
+    assert.ok(await cdp.evaluate("!!document.querySelector('.verdict')"), "键盘作答后即时判分");
     await click('[data-action="abandon-exam"]');
     await click('#confirm-submit');
     await click('.bottom-nav [data-nav="home"]');

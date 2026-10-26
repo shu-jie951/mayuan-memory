@@ -26,7 +26,7 @@
     home: ["学习首页", "把每一道题，变成长期记忆"],
     choice: ["选择题背诵", "按题库顺序学习，用记忆反馈安排复习"],
     subjective: ["主观题背诵", "先回忆答题框架，再核对完整表述"],
-    exam: ["选择题盲考", "单选与多选智能组卷，交卷前不显示答案"],
+    exam: ["选择题盲考", "逐题即时判分，交卷后查看成绩与分析"],
   };
   const defaultFilters = {
     choice: { chapter: "all", type: "all", status: "all", search: "", order: "sequential" },
@@ -35,6 +35,8 @@
   const ui = {
     view: "home",
     revealed: false,
+    studySelected: [],
+    studyGraded: false,
     completed: { choice: false, subjective: false },
     filters: JSON.parse(JSON.stringify(defaultFilters)),
     examResult: null,
@@ -319,8 +321,8 @@
         <article class="question-card card">
           <header class="question-card__header"><div class="question-card__badges"><span class="badge badge--brand">${escapeHTML(chapterName(question, true))}</span>${question.type === "single" ? '<span class="badge">单选题</span>' : question.type === "multiple" ? '<span class="badge badge--multi">多选题</span>' : '<span class="badge badge--multi">主观题</span>'}<span class="badge">${escapeHTML(question.section)}</span></div><button class="icon-button${memory.favorite ? " is-active" : ""}" data-action="favorite" aria-label="${memory.favorite ? "取消收藏" : "收藏当前题"}" title="收藏（F）">${icon("star")}</button></header>
           <div class="question-card__body"><span class="question-number">${mode === "choice" ? "CHOICE" : "ESSAY"} · ${String(index + 1).padStart(3, "0")}</span><h2 class="question-text">${escapeHTML(question.question)}</h2><p class="question-source">${escapeHTML(question.sourceFile)} · 原第 ${question.sourceNumber} 题${question.sourceRecords ? ` · 已合并 ${question.sourceRecords.length} 个来源` : ""}</p>
-            ${question.options ? `<ul class="option-list">${question.options.map(option => `<li class="option-row${revealed && question.answer.includes(option.label) ? " is-answer" : ""}"><span class="option-letter">${option.label}</span><span>${escapeHTML(option.text)}</span></li>`).join("")}</ul>` : ""}
-            ${revealed ? renderAnswer(question) : `<div class="answer-gate">${icon(mode === "choice" ? "choice" : "book")}<p>${mode === "choice" ? "先在心里确定选项，再核对答案" : "先口头复述或写下答题要点，再查看答案"}</p><button class="button button--primary" data-action="reveal">显示答案 <span class="subtle">Space</span></button></div>`}
+            ${question.options ? `<ul class="option-list">${question.options.map(option => renderStudyOption(question, option, revealed)).join("")}</ul>` : ""}
+            ${revealed ? `${ui.studyGraded ? studyVerdict(question) : ""}${renderAnswer(question)}` : mode === "choice" ? renderChoiceGate(question) : `<div class="answer-gate">${icon("book")}<p>先口头复述或写下答题要点，再查看答案</p><button class="button button--primary" data-action="reveal">显示答案 <span class="subtle">Space</span></button></div>`}
           </div>
           ${revealed ? `<div class="rating-area"><p class="rating-area__prompt">这次回忆得怎么样？诚实评价，复习安排会更准确。</p><div class="rating-grid"><button class="rating-button rating-button--again" data-action="rate" data-rating="again">重来<small>1 · 10 分钟后</small></button><button class="rating-button rating-button--hard" data-action="rate" data-rating="hard">模糊<small>2 · 至少 1 天</small></button><button class="rating-button rating-button--good" data-action="rate" data-rating="good">记住<small>3 · 正常间隔</small></button><button class="rating-button rating-button--easy" data-action="rate" data-rating="easy">熟练<small>4 · 更长间隔</small></button></div></div>` : ""}
           <footer class="question-card__footer"><button class="button button--ghost" data-action="study-prev" data-mode="${mode}"${index === 0 ? " disabled" : ""}>${icon("left")}上一题</button><span class="subtle">${memoryStatus(memory)}</span><button class="button button--ghost" data-action="study-next" data-mode="${mode}"${index === list.length - 1 ? " disabled" : ""}>下一题${icon("right")}</button></footer>
@@ -328,6 +330,60 @@
         <aside class="memory-panel card"><div><h3>当前记忆强度</h3><div class="memory-level"><strong>${memory.mastery}</strong><span>/ 5 · ${memoryStatus(memory)}</span></div></div><div class="memory-dots" aria-label="记忆强度 ${memory.mastery}/5">${dots}</div><dl class="memory-details"><div><dt>学习次数</dt><dd>${memory.seen} 次</dd></div><div><dt>答对 / 答错</dt><dd>${memory.correct} / ${memory.wrong}</dd></div><div><dt>下次复习</dt><dd>${dueText(memory)}</dd></div><div><dt>遗忘次数</dt><dd>${memory.lapses} 次</dd></div></dl><p class="memory-tip">${memory.seen ? "间隔会随“记住”和“熟练”逐渐拉长；“重来”会尽快再次出现。" : "第一次学习后，系统会记录记忆强度并安排下一次复习。"}</p><div class="memory-panel__side button-row"><button class="button button--small button--ghost" data-action="restart-study" data-mode="${mode}">从本组第一题开始</button></div></aside>
       </div>
     </div>`;
+  }
+
+  function renderStudyOption(question, option, revealed) {
+    const isCorrect = question.answer.includes(option.label);
+    const picked = ui.studySelected.includes(option.label);
+    const inner = `<span class="option-letter">${option.label}</span><span>${escapeHTML(option.text)}</span>`;
+    if (question.kind !== "choice") return `<li class="option-row">${inner}</li>`;
+    if (ui.studyGraded) {
+      const cls = isCorrect ? " is-answer" : picked ? " is-wrong-answer" : "";
+      return `<li class="option-row${cls}" aria-disabled="true">${inner}${isCorrect ? '<span class="option-flag">正确答案</span>' : picked ? '<span class="option-flag option-flag--wrong">你的选择</span>' : ""}</li>`;
+    }
+    if (revealed) return `<li class="option-row${isCorrect ? " is-answer" : ""}">${inner}</li>`;
+    return `<li><button type="button" class="option-row option-row--pickable${picked ? " is-picked" : ""}" data-action="pick-study" data-option="${option.label}" aria-pressed="${picked}">${inner}</button></li>`;
+  }
+
+  function renderChoiceGate(question) {
+    const pickedCount = ui.studySelected.length;
+    return `<div class="answer-gate">${icon("choice")}<p>${question.type === "multiple" ? "勾选所有正确选项后提交，漏选、错选均不得分" : "点击选项作答，系统即时判分"}</p><div class="button-row">${question.type === "multiple" ? `<button class="button button--primary" data-action="submit-study-answer"${pickedCount ? "" : " disabled"}>提交答案${pickedCount ? `（已选 ${pickedCount} 项）` : ""}</button>` : ""}<button class="button button--ghost" data-action="reveal">直接显示答案 <span class="subtle">Space</span></button></div></div>`;
+  }
+
+  function studyVerdict(question) {
+    const correct = question.answer.join("") === ui.studySelected.join("");
+    return `<div class="verdict ${correct ? "verdict--correct" : "verdict--wrong"}">${icon(correct ? "check" : "close")}<span>${correct ? "回答正确" : `回答错误 · 正确答案 ${question.answer.join("")}`}</span></div>`;
+  }
+
+  function resetStudyPick() {
+    ui.studySelected = [];
+    ui.studyGraded = false;
+  }
+
+  function pickStudy(label) {
+    const { question } = currentStudy("choice", getStudyList("choice"));
+    if (!question || ui.studyGraded || ui.revealed) return;
+    if (question.type === "single") {
+      ui.studySelected = [label];
+      gradeStudy();
+      return;
+    }
+    ui.studySelected = ui.studySelected.includes(label) ? ui.studySelected.filter(item => item !== label) : [...ui.studySelected, label].sort();
+    render(true);
+  }
+
+  function gradeStudy() {
+    const { question } = currentStudy("choice", getStudyList("choice"));
+    if (!question || ui.studyGraded || ui.revealed) return;
+    if (!ui.studySelected.length) {
+      toast("请先选择至少一个选项");
+      return;
+    }
+    ui.studyGraded = true;
+    ui.revealed = true;
+    render(true);
+    const correct = question.answer.join("") === ui.studySelected.join("");
+    toast(correct ? "回答正确" : "回答错误，请查看解析");
   }
 
   function renderStudyToolbar(mode) {
@@ -353,6 +409,7 @@
     ui.filters[mode] = { ...defaultFilters[mode], ...options };
     ui.completed[mode] = false;
     state.positions[mode] = "";
+    resetStudyPick();
     saveState();
     navigate(mode);
   }
@@ -364,6 +421,7 @@
     if (!list[nextIndex]) return;
     state.positions[mode] = list[nextIndex].id;
     ui.revealed = false;
+    resetStudyPick();
     saveState();
     render();
     document.querySelector(".question-card")?.scrollIntoView({ block: "start", behavior: scrollBehavior() });
@@ -376,6 +434,7 @@
     if (!question || !ui.revealed) return;
     state = Core.reviewQuestion(state, question.id, rating);
     ui.revealed = false;
+    resetStudyPick();
     if (index === list.length - 1) ui.completed[mode] = true;
     else state.positions[mode] = list[index + 1].id;
     saveState();
@@ -407,7 +466,7 @@
     const customCount = [-1, 10, 20, 50].includes(selectedCount) ? "" : selectedCount;
     return `<div class="page-stack">
       <section class="exam-setup card">
-        <div class="exam-setup__intro"><span class="eyebrow">BLIND TEST</span><h2>把“看着会”，<br>变成“做得对”。</h2><p>系统按题库中 65% 单选、35% 多选的实际比例自动分配，并优先抽取到期、答错和尚未掌握的题。</p><ul class="exam-rules"><li>${icon("check")}交卷前不显示答案，避免熟悉感造成误判</li><li>${icon("check")}多选题必须全部选对，漏选、错选均不得分</li><li>${icon("check")}自动保存答案，刷新或换天都能继续本场考试</li></ul></div>
+        <div class="exam-setup__intro"><span class="eyebrow">BLIND TEST</span><h2>把“看着会”，<br>变成“做得对”。</h2><p>系统按题库中 65% 单选、35% 多选的实际比例自动分配，并优先抽取到期、答错和尚未掌握的题。</p><ul class="exam-rules"><li>${icon("check")}每题作答后立即判分：正确标绿，错误标红，判分后不可修改</li><li>${icon("check")}多选题需确认答案，漏选、错选均不得分</li><li>${icon("check")}交卷后查看完整成绩、章节分析与错题解析</li></ul></div>
         <div class="exam-setup__form">
           <div class="form-group"><label for="exam-chapter">考试范围</label><select id="exam-chapter" class="select">${chapterOptions("all")}</select><small id="exam-pool-note">全库共 ${choiceQuestions.length} 道选择题</small></div>
           <div class="form-group"><span>题目数量</span><div class="choice-chips">${[10, 20, 50, -1].map(count => `<label class="choice-chip"><input type="radio" name="exam-count" value="${count}"${selectedCount === count ? " checked" : ""}><span>${count === -1 ? "全部" : `${count} 题`}</span></label>`).join("")}</div></div>
@@ -424,23 +483,76 @@
     </div>`;
   }
 
+  function sameAnswer(left, right) {
+    return left.length === right.length && left.every((item, index) => item === right[index]);
+  }
+
+  function isExamAnswerCorrect(exam, id) {
+    const question = questionMap.get(id);
+    return Boolean(exam.graded?.[id]) && Boolean(question) && sameAnswer(exam.answers[id] || [], question.answer);
+  }
+
+  function renderExamOption(question, option, selected, graded) {
+    const isAnswer = question.answer.includes(option.label);
+    const picked = selected.includes(option.label);
+    const inner = `<span class="option-letter">${option.label}</span><span>${escapeHTML(option.text)}</span>`;
+    if (graded) {
+      const cls = isAnswer ? " is-answer" : picked ? " is-wrong-answer" : "";
+      return `<div class="exam-option${cls} is-locked" aria-disabled="true">${inner}${isAnswer ? '<span class="option-flag">正确答案</span>' : picked ? '<span class="option-flag option-flag--wrong">你的选择</span>' : ""}</div>`;
+    }
+    const inputType = question.type === "multiple" ? "checkbox" : "radio";
+    return `<label class="exam-option${picked ? " is-selected" : ""}"><input type="${inputType}" name="answer-${question.id}" data-exam-answer="${question.id}" value="${option.label}"${picked ? " checked" : ""}>${inner}</label>`;
+  }
+
   function renderExamRoom() {
     const exam = state.activeExam;
     const question = questionMap.get(exam.questionIds[exam.index]);
     if (!question) return '<div class="empty-state card"><h2>考试数据异常</h2><p>请结束本场考试后重新组卷。</p><button class="button button--primary" data-action="abandon-exam">返回考试中心</button></div>';
     const selected = exam.answers[question.id] || [];
+    const graded = Boolean(exam.graded?.[question.id]);
+    const examCorrect = graded && sameAnswer(selected, question.answer);
     const answered = exam.questionIds.filter(id => (exam.answers[id] || []).length).length;
+    const correctCount = exam.questionIds.filter(id => isExamAnswerCorrect(exam, id)).length;
     const flagged = exam.flagged.includes(question.id);
     const remaining = exam.timeLimit ? Math.max(0, exam.endsAt - Date.now()) : null;
     const timerClass = remaining !== null && remaining <= 60000 ? " timer--danger" : remaining !== null && remaining <= 300000 ? " timer--warning" : "";
     const timerValue = remaining === null ? formatDuration(exam.elapsed / 1000) : formatDuration(Math.ceil(remaining / 1000));
-    return `<div class="exam-room"><div class="exam-room__main"><div class="exam-status"><div><strong>第 ${exam.index + 1} / ${exam.questionIds.length} 题</strong><div class="study-summary__bar">${progressBar(Math.round(answered / exam.questionIds.length * 100))}</div></div><div class="exam-status__items"><span class="badge">已答 ${answered}</span><span class="badge">标记 ${exam.flagged.length}</span><span class="timer${timerClass}" title="${exam.timeLimit ? "距离自动交卷" : "本场作答用时"}">${icon("clock")}<span id="exam-timer-label">${exam.timeLimit ? "剩余" : "已用"}</span><span id="exam-timer">${timerValue}</span></span></div></div><article class="question-card card"><header class="question-card__header"><div class="question-card__badges"><span class="badge badge--brand">${escapeHTML(chapterName(question, true))}</span><span class="badge${question.type === "multiple" ? " badge--multi" : ""}">${question.type === "multiple" ? "多选题" : "单选题"}</span><span class="badge">${escapeHTML(question.section)}</span></div><button class="icon-button${flagged ? " is-active" : ""}" data-action="exam-flag" aria-label="${flagged ? "取消标记" : "标记本题"}" title="标记本题">${icon("flag")}</button></header><div class="question-card__body"><span class="question-number">${question.type === "multiple" ? "MULTIPLE CHOICE" : "SINGLE CHOICE"} · ${String(exam.index + 1).padStart(3, "0")}</span><h2 class="question-text">${escapeHTML(question.question)}</h2><p class="question-source">${question.type === "multiple" ? "本题有两个或两个以上正确答案，全部选对才得分" : "本题只有一个正确答案"}</p><div class="option-list exam-options">${question.options.map(option => `<label class="exam-option${selected.includes(option.label) ? " is-selected" : ""}"><input type="${question.type === "multiple" ? "checkbox" : "radio"}" name="answer-${question.id}" data-exam-answer="${question.id}" value="${option.label}"${selected.includes(option.label) ? " checked" : ""}><span class="option-letter">${option.label}</span><span>${escapeHTML(option.text)}</span></label>`).join("")}</div></div><footer class="question-card__footer"><button class="button button--ghost" data-action="exam-prev"${exam.index === 0 ? " disabled" : ""}>${icon("left")}上一题</button><button class="button button--ghost mobile-sheet-button" data-action="toggle-sheet">${icon("grid")}答题卡</button><button class="button button--ghost" data-action="exam-next">${exam.index === exam.questionIds.length - 1 ? "回到第一题" : "下一题"}${icon("right")}</button></footer></article><div class="exam-actions"><button class="text-button text-danger" data-action="abandon-exam">结束本场考试</button><div class="exam-actions__right"><span class="subtle">答案已自动保存</span></div></div></div><aside class="answer-sheet card${ui.mobileSheet ? " is-mobile-open" : ""}" aria-label="答题卡"><div class="answer-sheet__header"><h3>答题卡</h3><span class="subtle">${answered}/${exam.questionIds.length}</span></div><div class="sheet-grid">${exam.questionIds.map((id, index) => `<button class="sheet-number${(exam.answers[id] || []).length ? " is-answered" : ""}${index === exam.index ? " is-current" : ""}${exam.flagged.includes(id) ? " is-flagged" : ""}" data-action="exam-jump" data-index="${index}" aria-label="第 ${index + 1} 题${(exam.answers[id] || []).length ? "，已答" : "，未答"}">${index + 1}</button>`).join("")}</div><div class="answer-sheet__legend"><span><i class="legend-dot legend-dot--answered"></i>已答</span><span><i class="legend-dot"></i>未答</span><span>圆点：已标记</span></div><button class="button button--primary sheet-submit" data-action="submit-exam">交卷并查看成绩</button></aside></div>`;
+    const optionsHTML = question.options.map(option => renderExamOption(question, option, selected, graded)).join("");
+    return `<div class="exam-room"><div class="exam-room__main"><div class="exam-status"><div><strong>第 ${exam.index + 1} / ${exam.questionIds.length} 题</strong><div class="study-summary__bar">${progressBar(Math.round(answered / exam.questionIds.length * 100))}</div></div><div class="exam-status__items"><span class="badge">已答 ${answered}</span><span class="badge badge--success">已判对 ${correctCount}</span><span class="badge">标记 ${exam.flagged.length}</span><span class="timer${timerClass}" title="${exam.timeLimit ? "距离自动交卷" : "本场作答用时"}">${icon("clock")}<span id="exam-timer-label">${exam.timeLimit ? "剩余" : "已用"}</span><span id="exam-timer">${timerValue}</span></span></div></div><article class="question-card card"><header class="question-card__header"><div class="question-card__badges"><span class="badge badge--brand">${escapeHTML(chapterName(question, true))}</span><span class="badge${question.type === "multiple" ? " badge--multi" : ""}">${question.type === "multiple" ? "多选题" : "单选题"}</span><span class="badge">${escapeHTML(question.section)}</span></div><button class="icon-button${flagged ? " is-active" : ""}" data-action="exam-flag" aria-label="${flagged ? "取消标记" : "标记本题"}" title="标记本题">${icon("flag")}</button></header><div class="question-card__body"><span class="question-number">${question.type === "multiple" ? "MULTIPLE CHOICE" : "SINGLE CHOICE"} · ${String(exam.index + 1).padStart(3, "0")}</span><h2 class="question-text">${escapeHTML(question.question)}</h2><p class="question-source">${question.type === "multiple" ? "本题有两个或两个以上正确答案，全部选对才得分" : "本题只有一个正确答案"}</p>${graded ? `<div class="verdict ${examCorrect ? "verdict--correct" : "verdict--wrong"}">${icon(examCorrect ? "check" : "close")}<span>${examCorrect ? "回答正确" : `回答错误 · 正确答案 ${question.answer.join("")}`}</span></div>` : ""}<div class="option-list exam-options">${optionsHTML}</div>${!graded && question.type === "multiple" ? `<div class="exam-confirm"><button class="button button--primary" data-action="confirm-exam-answer"${selected.length ? "" : " disabled"}>确认答案${selected.length ? `（已选 ${selected.length} 项）` : ""}</button></div>` : ""}</div><footer class="question-card__footer"><button class="button button--ghost" data-action="exam-prev"${exam.index === 0 ? " disabled" : ""}>${icon("left")}上一题</button><button class="button button--ghost mobile-sheet-button" data-action="toggle-sheet">${icon("grid")}答题卡</button><button class="button button--primary" data-action="exam-next">${exam.index === exam.questionIds.length - 1 ? "回到第一题" : `下一题${icon("right")}`}</button></footer></article><div class="exam-actions"><button class="text-button text-danger" data-action="abandon-exam">结束本场考试</button><div class="exam-actions__right"><span class="subtle">答案已自动保存，判分后不可修改</span></div></div></div><aside class="answer-sheet card${ui.mobileSheet ? " is-mobile-open" : ""}" aria-label="答题卡"><div class="answer-sheet__header"><h3>答题卡</h3><span class="subtle">${answered}/${exam.questionIds.length}</span></div><div class="sheet-grid">${exam.questionIds.map((id, index) => {
+      const isCorrect = isExamAnswerCorrect(exam, id);
+      const isWrong = Boolean(exam.graded?.[id]) && !isCorrect;
+      return `<button class="sheet-number${(exam.answers[id] || []).length ? " is-answered" : ""}${index === exam.index ? " is-current" : ""}${exam.flagged.includes(id) ? " is-flagged" : ""}${isCorrect ? " is-correct" : isWrong ? " is-wrong" : ""}" data-action="exam-jump" data-index="${index}" aria-label="第 ${index + 1} 题${isCorrect ? "，回答正确" : isWrong ? "，回答错误" : (exam.answers[id] || []).length ? "，已答" : "，未答"}">${index + 1}</button>`;
+    }).join("")}</div><div class="answer-sheet__legend"><span><i class="legend-dot legend-dot--correct"></i>正确</span><span><i class="legend-dot legend-dot--wrong"></i>错误</span><span><i class="legend-dot legend-dot--answered"></i>已答</span><span><i class="legend-dot"></i>未答</span></div><button class="button button--primary sheet-submit" data-action="submit-exam">交卷并查看成绩</button></aside></div>`;
+  }
+
+  function examAnalysis(record) {
+    const types = { single: { label: "单选题", total: 0, correct: 0 }, multiple: { label: "多选题", total: 0, correct: 0 } };
+    const chapters = new Map();
+    record.questionIds.forEach(id => {
+      const question = questionMap.get(id);
+      if (!question) return;
+      const ok = !record.wrongIds.includes(id);
+      types[question.type].total += 1;
+      if (ok) types[question.type].correct += 1;
+      const entry = chapters.get(question.chapterId) || { name: chapterName(question), total: 0, correct: 0 };
+      entry.total += 1;
+      if (ok) entry.correct += 1;
+      chapters.set(question.chapterId, entry);
+    });
+    const typeHTML = Object.entries(types).filter(([, value]) => value.total).map(([, value]) => {
+      const percent = Math.round(value.correct / value.total * 100);
+      return `<div class="analysis-chip"><span>${value.label}</span><strong class="${percent >= 70 ? "text-success" : percent >= 50 ? "" : "text-danger"}">${percent}%</strong><small>${value.correct}/${value.total}</small></div>`;
+    }).join("");
+    const chapterHTML = [...chapters.entries()].map(([id, value]) => ({ id, ...value, percent: Math.round(value.correct / value.total * 100) })).sort((a, b) => a.percent - b.percent).map(chapter => `
+      <div class="analysis-row${chapter.percent < 60 ? " analysis-row--weak" : ""}"><span class="analysis-row__name">${escapeHTML(chapter.name)}</span><div class="analysis-row__bar">${progressBar(chapter.percent)}</div><strong class="${chapter.percent >= 70 ? "text-success" : chapter.percent >= 60 ? "" : "text-danger"}">${chapter.correct}/${chapter.total}</strong></div>`).join("");
+    const avgSeconds = record.questionIds.length ? Math.round(record.duration / 1000 / record.questionIds.length) : 0;
+    return `<section class="analysis card"><div class="section-heading"><div><h2>成绩分析</h2><p>找出薄弱章节，决定下一步复习重点</p></div><span class="badge">平均每题 ${avgSeconds} 秒</span></div><div class="analysis-chips">${typeHTML}</div><h3>章节正确率（由弱到强）</h3><div class="analysis-rows">${chapterHTML}</div>${record.wrongIds.length ? `<p class="analysis-tip">建议：先重考本章错题，再进入「${escapeHTML([...chapters.entries()].map(([id, value]) => ({ id, ...value, percent: Math.round(value.correct / value.total * 100) })).sort((a, b) => a.percent - b.percent)[0]?.name || "")}」专项背诵。</p>` : '<p class="analysis-tip">全部答对，可以扩大考试范围或提高题量继续挑战。</p>'}</section>`;
   }
 
   function renderExamResult(record) {
     const unanswered = record.questionIds.filter(id => !(record.answers[id] || []).length).length;
     const message = record.accuracy >= 90 ? "掌握得很扎实，可以挑战更大范围。" : record.accuracy >= 70 ? "整体不错，把错题再巩固一轮会更稳定。" : "已经找到薄弱点，立即重考错题效果最好。";
-    return `<div class="page-stack"><section class="result-hero card"><div class="result-score">${record.accuracy}<small>%</small></div><h2>${record.accuracy >= 80 ? "本场发挥出色" : "完成比完美更重要"}</h2><p>${record.timedOut ? "时间到，系统已自动交卷；未作答按答错计分。" : message}</p><div class="button-row"><button class="button button--primary" data-action="retry-wrong" data-exam-id="${escapeHTML(record.id)}"${record.wrongIds.length ? "" : " disabled"}>错题重考（${record.wrongIds.length}）</button><button class="button button--ghost" data-action="toggle-review">${ui.showReview ? "收起解析" : "查看全部解析"}</button><button class="button button--ghost" data-action="copy-result" data-exam-id="${escapeHTML(record.id)}">复制成绩</button><button class="button button--ghost" data-action="export-result" data-exam-id="${escapeHTML(record.id)}">${icon("download")}导出解析</button><button class="button button--ghost" data-action="new-exam">再考一场</button></div></section><section class="result-stats"><div class="result-stat"><strong class="text-success">${record.correct}</strong><span>答对</span></div><div class="result-stat"><strong class="text-danger">${record.wrongIds.length}</strong><span>答错</span></div><div class="result-stat"><strong>${unanswered}</strong><span>未作答</span></div><div class="result-stat"><strong>${formatDuration(record.duration)}</strong><span>用时</span></div></section>${ui.showReview ? `<section class="review-list">${record.questionIds.map((id, index) => renderReviewItem(record, id, index)).join("")}</section>` : ""}</div>`;
+    return `<div class="page-stack"><section class="result-hero card"><div class="result-score">${record.accuracy}<small>%</small></div><h2>${record.accuracy >= 80 ? "本场发挥出色" : "完成比完美更重要"}</h2><p>${record.timedOut ? "时间到，系统已自动交卷；未作答按答错计分。" : message}</p><div class="button-row"><button class="button button--primary" data-action="retry-wrong" data-exam-id="${escapeHTML(record.id)}"${record.wrongIds.length ? "" : " disabled"}>错题重考（${record.wrongIds.length}）</button><button class="button button--ghost" data-action="toggle-review">${ui.showReview ? "收起解析" : "查看全部解析"}</button><button class="button button--ghost" data-action="copy-result" data-exam-id="${escapeHTML(record.id)}">复制成绩</button><button class="button button--ghost" data-action="export-result" data-exam-id="${escapeHTML(record.id)}">${icon("download")}导出解析</button><button class="button button--ghost" data-action="new-exam">再考一场</button></div></section><section class="result-stats"><div class="result-stat"><strong class="text-success">${record.correct}</strong><span>答对</span></div><div class="result-stat"><strong class="text-danger">${record.wrongIds.length}</strong><span>答错</span></div><div class="result-stat"><strong>${unanswered}</strong><span>未作答</span></div><div class="result-stat"><strong>${formatDuration(record.duration)}</strong><span>用时</span></div></section>${examAnalysis(record)}${ui.showReview ? `<section class="review-list">${record.questionIds.map((id, index) => renderReviewItem(record, id, index)).join("")}</section>` : ""}</div>`;
   }
 
   function renderReviewItem(record, id, index) {
@@ -529,10 +641,12 @@
     const question = questionMap.get(exam.questionIds[exam.index]);
     const label = letter.toUpperCase();
     const option = question?.options.find(item => item.label === label);
-    if (!option) return;
+    if (!option || exam.graded?.[question.id]) return;
     syncExamClock();
-    if (question.type === "single") exam.answers[question.id] = [label];
-    else {
+    if (question.type === "single") {
+      exam.answers[question.id] = [label];
+      exam.graded = { ...(exam.graded || {}), [question.id]: true };
+    } else {
       const selected = new Set(exam.answers[question.id] || []);
       if (selected.has(label)) selected.delete(label);
       else selected.add(label);
@@ -714,7 +828,9 @@
       startStudy(mode, { status: button.dataset.status, order: button.dataset.status === "due" ? "smart" : "sequential" });
     }
     else if (action === "open-chapter") startStudy("choice", { chapter: button.dataset.chapter });
-    else if (action === "reveal") { ui.revealed = true; render(true); }
+    else if (action === "reveal") { resetStudyPick(); ui.revealed = true; render(true); }
+    else if (action === "pick-study") pickStudy(button.dataset.option);
+    else if (action === "submit-study-answer") gradeStudy();
     else if (action === "rate") rateCurrent(button.dataset.rating);
     else if (action === "study-prev") moveStudy(button.dataset.mode, -1);
     else if (action === "study-next") moveStudy(button.dataset.mode, 1);
@@ -736,6 +852,17 @@
       const exam = state.activeExam;
       const id = exam.questionIds[exam.index];
       exam.flagged = exam.flagged.includes(id) ? exam.flagged.filter(item => item !== id) : [...exam.flagged, id];
+      saveState();
+      render(true);
+    } else if (action === "confirm-exam-answer") {
+      const exam = state.activeExam;
+      const id = exam.questionIds[exam.index];
+      if (!(exam.answers[id] || []).length) {
+        toast("请先选择至少一个选项");
+        return;
+      }
+      syncExamClock();
+      exam.graded = { ...(exam.graded || {}), [id]: true };
       saveState();
       render(true);
     } else if (action === "toggle-sheet") { ui.mobileSheet = !ui.mobileSheet; render(true); }
@@ -777,6 +904,7 @@
       ui.filters[mode][filter.dataset.filter] = filter.value;
       state.positions[mode] = "";
       ui.revealed = false;
+      resetStudyPick();
       ui.completed[mode] = false;
       saveState();
       render();
@@ -795,8 +923,11 @@
       syncExamClock();
       const id = answer.dataset.examAnswer;
       const question = questionMap.get(id);
-      if (question.type === "single") state.activeExam.answers[id] = [answer.value];
-      else {
+      if (state.activeExam.graded?.[id]) { render(true); return; }
+      if (question.type === "single") {
+        state.activeExam.answers[id] = [answer.value];
+        state.activeExam.graded = { ...(state.activeExam.graded || {}), [id]: true };
+      } else {
         const selected = new Set(state.activeExam.answers[id] || []);
         if (answer.checked) selected.add(answer.value);
         else selected.delete(answer.value);
@@ -873,7 +1004,12 @@
       if (event.key === "ArrowRight") moveStudy(ui.view, 1);
     } else if (ui.view === "exam" && state.activeExam && !ui.examResult) {
       if (/^[a-h]$/i.test(event.key)) { event.preventDefault(); answerExamLetter(event.key); }
-      if (event.key === "Enter") { event.preventDefault(); moveExam(state.activeExam.index + 1); }
+      if (event.key === "Enter") {
+        event.preventDefault();
+        const question = questionMap.get(state.activeExam.questionIds[state.activeExam.index]);
+        if (question?.type === "multiple" && !state.activeExam.graded?.[question.id]) document.querySelector('[data-action="confirm-exam-answer"]')?.click();
+        else moveExam(state.activeExam.index + 1);
+      }
       if (event.key === "Backspace") { event.preventDefault(); moveExam(state.activeExam.index - 1); }
       if (event.key.toLowerCase() === "f") document.querySelector('[data-action="exam-flag"]')?.click();
     }

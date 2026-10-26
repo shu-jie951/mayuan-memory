@@ -203,3 +203,16 @@ test("损坏备份返回可用默认状态", () => {
   assert.deepEqual(normalized.examHistory, []);
   assert.equal(normalized.activeExam, null);
 });
+
+test("判分状态随考试恢复且非法项被过滤", () => {
+  const activeExam = {
+    ...examFixture({ [single.id]: single.answer }),
+    graded: { [single.id]: true, [multiple.id]: true, invalid: true },
+  };
+  const normalized = Core.normalizeState({ activeExam }, ids, NOW);
+  assert.equal(normalized.activeExam.graded[single.id], true);
+  assert.equal(normalized.activeExam.graded[multiple.id], true);
+  assert.equal(normalized.activeExam.graded.invalid, undefined);
+  const fresh = Core.normalizeState({ activeExam: examFixture({}) }, ids, NOW);
+  assert.deepEqual(fresh.activeExam.graded, {});
+});

@@ -1,4 +1,4 @@
-const CACHE = "mayuan-memory-v2";
+const CACHE = "mayuan-memory-v3";
 const ASSETS = [
   "./",
   "index.html",
