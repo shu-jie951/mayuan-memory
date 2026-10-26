@@ -1,0 +1,19 @@
+{
+  "name": "马原记忆舱",
+  "short_name": "马原记忆舱",
+  "description": "马克思主义基本原理选择题、主观题背诵与盲考",
+  "lang": "zh-CN",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f4f6f3",
+  "theme_color": "#174d40",
+  "icons": [
+    {
+      "src": "assets/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "name": "mayuan-memory",
+  "version": "1.0.0",
+  "private": true,
+  "description": "马克思主义基本原理背诵与盲考网站",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test tests",
+    "test:e2e": "node tests/e2e.js",
+    "check": "node --check js/core.js && node --check js/app.js && node --check server.js && node --check sw.js && node --check tests/e2e.js"
+  }
+}
