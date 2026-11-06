@@ -3,3 +3,7 @@ node_modules/
 tests/.edge-e2e-profile/
 tests/*.png
 *.log
+.figurework/
+.workbuddy/
+.DS_Store
+Thumbs.db

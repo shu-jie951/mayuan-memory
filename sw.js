@@ -1,12 +1,17 @@
-const CACHE = "mayuan-memory-v3";
+const CACHE = "memory-cabin-v5";
 const ASSETS = [
   "./",
   "index.html",
   "styles.css",
   "data/questions.js",
+  "data/mech.js",
   "js/core.js",
   "js/app.js",
   "assets/icon.svg",
+  "assets/mech/q1-fe-c-regions.png",
+  "assets/mech/q2-fe-c-points.png",
+  "assets/mech/q3-cct-cooling.png",
+  "assets/mech/q4-cct-cooling.png",
   "manifest.webmanifest"
 ];
 

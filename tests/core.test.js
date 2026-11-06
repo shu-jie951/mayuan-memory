@@ -166,7 +166,7 @@ test("备份清洗丢弃未知题目并限制异常数值", () => {
   assert.equal(normalized.questions.malicious, undefined);
   assert.equal(normalized.settings.theme, "system");
   assert.equal(normalized.settings.dailyGoal, 5);
-  assert.equal(normalized.settings.examCount, 421);
+  assert.equal(normalized.settings.examCount, 500);
   assert.equal(normalized.settings.examMinutes, 300);
 });
 
@@ -193,7 +193,7 @@ test("刷新恢复保留答案并修正越界题号", () => {
   const activeExam = { ...examFixture({ [single.id]: ["B", "A", "A"], invalid: ["A"] }), index: 999 };
   const normalized = Core.normalizeState({ activeExam }, ids, NOW);
   assert.equal(normalized.activeExam.index, 1);
-  assert.deepEqual(normalized.activeExam.answers[single.id], ["A", "B"]);
+  assert.deepEqual(normalized.activeExam.answers[single.id], ["B", "A"]);
   assert.equal(normalized.activeExam.answers.invalid, undefined);
 });
 
@@ -215,4 +215,71 @@ test("判分状态随考试恢复且非法项被过滤", () => {
   assert.equal(normalized.activeExam.graded.invalid, undefined);
   const fresh = Core.normalizeState({ activeExam: examFixture({}) }, ids, NOW);
   assert.deepEqual(fresh.activeExam.graded, {});
+});
+
+test("两个题库使用互相独立的存储键", () => {
+  assert.equal(Core.storageKey("mayuan"), "mayuan-memory-v1");
+  assert.notEqual(Core.storageKey("mech"), Core.storageKey("mayuan"));
+  assert.match(Core.storageKey("mech"), /mech/);
+  assert.equal(Core.storageKey(), "mayuan-memory-v1");
+});
+
+test("判断题按选项字母判分", () => {
+  const judge = { id: "j9001", kind: "judge", type: "tf", options: [{ label: "A" }, { label: "B" }], answer: ["B"] };
+  assert.equal(Core.gradeAnswer(judge, ["B"]).correct, true);
+  assert.equal(Core.gradeAnswer(judge, ["A"]).correct, false);
+  assert.equal(Core.gradeAnswer(judge, []).correct, false);
+});
+
+test("填空题忽略空格、全半角与标点差异", () => {
+  const blank = { id: "j9002", kind: "blank", type: "blank", blanks: ["2.11%", "22.64 %"], answer: "2.11%；22.64%" };
+  assert.equal(Core.gradeAnswer(blank, ["2.11%", "22.64%"]).correct, true);
+  assert.equal(Core.gradeAnswer(blank, ["２.１１％", "22.64％"]).correct, true);
+  assert.equal(Core.gradeAnswer(blank, ["2.11%", " 22.64 % "]).correct, true);
+  const partial = Core.gradeAnswer(blank, ["2.11%", "20%"]);
+  assert.equal(partial.correct, false);
+  assert.deepEqual(partial.hits, [true, false]);
+});
+
+test("填空题答案支持“；”并列多种写法", () => {
+  const blank = { kind: "blank", blanks: ["铁素体；F"], answer: "铁素体" };
+  assert.equal(Core.matchBlank(blank, ["F"]).correct, true);
+  assert.equal(Core.matchBlank(blank, ["铁素体"]).correct, true);
+});
+
+test("盲考组卷混排选择、判断与填空，且只取可判分题型", () => {
+  const pool = [
+    { id: "c0001", kind: "choice", type: "single", answer: ["A"] },
+    { id: "c0002", kind: "choice", type: "single", answer: ["A"] },
+    { id: "j0001", kind: "judge", type: "tf", answer: ["A"] },
+    { id: "j0002", kind: "blank", type: "blank", answer: "x", blanks: ["x"] },
+    { id: "j0003", kind: "subjective", type: "essay", answer: "长答案" },
+  ];
+  const picked = Core.selectExamQuestions(pool, Core.createDefaultState(NOW), 4, "random");
+  assert.equal(picked.length, 4);
+  assert.ok(picked.every(question => ["choice", "judge", "blank"].includes(question.kind)));
+  const smart = Core.selectExamQuestions(pool, Core.createDefaultState(NOW), 4, "smart");
+  assert.equal(smart.length, 4);
+  assert.equal(new Set(smart.map(question => question.id)).size, 4);
+  assert.equal(Core.isAutoGraded(pool[4]), false);
+});
+
+test("主观题不参与自动判分", () => {
+  assert.equal(Core.gradeAnswer({ kind: "subjective", answer: "文本" }, ["文本"]).auto, false);
+  assert.equal(Core.isAutoGraded({ kind: "subjective" }), false);
+});
+
+test("备份清洗保留填空文本答案且限制长度", () => {
+  const answers = Core.normalizeState({
+    activeExam: { id: "e", questionIds: ["j0001"], answers: { j0001: ["  22.64%  ", "x".repeat(200)] }, index: 0 },
+  }, new Set(["j0001"]), NOW).activeExam.answers;
+  assert.equal(answers.j0001[0], "22.64%");
+  assert.equal(answers.j0001[1].length, 60);
+});
+
+test("positions 按题库实际题号清洗，支持任意模式键", () => {
+  const normalized = Core.normalizeState({ positions: { choice: single.id, term: single.id, bad: "zzz" } }, ids, NOW);
+  assert.equal(normalized.positions.choice, single.id);
+  assert.equal(normalized.positions.term, single.id);
+  assert.equal(normalized.positions.bad, undefined);
 });

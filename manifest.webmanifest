@@ -1,7 +1,7 @@
 {
-  "name": "马原记忆舱",
-  "short_name": "马原记忆舱",
-  "description": "马克思主义基本原理选择题、主观题背诵与盲考",
+  "name": "记忆舱 · 双学科题库",
+  "short_name": "记忆舱",
+  "description": "马原与机械工程材料双题库：背诵、盲考与间隔复习",
   "lang": "zh-CN",
   "start_url": "./",
   "scope": "./",

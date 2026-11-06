@@ -330,6 +330,84 @@ async function main() {
     assert.equal(await cdp.evaluate("document.documentElement.dataset.theme"), "light");
     passed("明暗主题双向切换");
 
+    // ---------- 机械工程材料题库 ----------
+    const mayuanBefore = await storedState();
+    await click('[data-action="switch-subject"][data-subject="mech"]');
+    assert.ok((await cdp.evaluate("document.querySelector('#brand-name').textContent")).includes("机械"));
+    assert.equal(await cdp.evaluate("QUESTION_BANK_MECH.questions.length"), 374);
+    assert.equal(await cdp.evaluate("document.querySelectorAll('.subject-grid .subject-card').length"), 2);
+    await noOverflow("375px 机械首页");
+    await screenshot("mobile-mech-home.png");
+    passed("切换到机械工程材料题库，进度独立且首页正常");
+
+    await click('.bottom-nav [data-nav="choice"]');
+    await cdp.evaluate(`(() => {
+      const select = document.querySelector('select[data-filter="type"]');
+      select.value = "tf";
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    })()`);
+    await click('[data-action="judge-study"][data-option="A"]');
+    assert.ok(await cdp.evaluate("!!document.querySelector('.verdict')"));
+    assert.ok(await cdp.evaluate("!!document.querySelector('.explain-block--analysis')"), "判断题作答后显示解析");
+    assert.ok((await cdp.evaluate("document.querySelector('.explain-block--analysis').textContent")).length > 10);
+    await noOverflow("375px 判断题判分");
+    await screenshot("mobile-mech-judge.png");
+    await click('[data-action="rate"][data-rating="good"]');
+    passed("判断题作答后即时判分并展示解析");
+
+    await cdp.evaluate(`(() => {
+      const select = document.querySelector('select[data-filter="type"]');
+      select.value = "blank";
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    })()`);
+    const blankAnswer = await cdp.evaluate("(() => { const id = document.querySelector('.question-card').dataset.question; const q = QUESTION_BANK_MECH.questions.find(item => item.id === id); return q ? q.blanks : null; })()");
+    assert.ok(Array.isArray(blankAnswer) && blankAnswer.length > 0, "找到当前填空题的答案");
+    await cdp.evaluate(`(() => {
+      const answers = ${JSON.stringify(blankAnswer)};
+      [...document.querySelectorAll('.blank-input')].forEach((input, index) => {
+        input.value = answers[index] || "";
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+    })()`);
+    await click('[data-action="check-blanks"]');
+    assert.ok(await cdp.evaluate("!!document.querySelector('.verdict--correct')"), "填空全对判为正确");
+    assert.ok(await cdp.evaluate("document.querySelectorAll('.blank-answer-list li').length > 0"));
+    await noOverflow("375px 填空题判分");
+    await screenshot("mobile-mech-blank.png");
+    await click('[data-action="rate"][data-rating="good"]');
+    passed("填空题逐空作答、判分并列出参考答案");
+
+    await click('.bottom-nav [data-nav="subjective"]');
+    await cdp.evaluate(`(() => {
+      const select = document.querySelector('select[data-filter="type"]');
+      select.value = "analysis";
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    })()`);
+    assert.equal(await cdp.evaluate("!!document.querySelector('.question-figure img')"), true, "综合分析题带配图");
+    await waitFor(() => cdp.evaluate("document.querySelector('.question-figure img').naturalWidth > 0"), "配图加载完成");
+    await click('[data-action="reveal"]');
+    assert.ok((await cdp.evaluate("document.querySelector('.answer-panel').textContent")).includes("参考答案"));
+    assert.ok(await cdp.evaluate("!!document.querySelector('.explain-block--analysis')"));
+    await noOverflow("375px 综合分析题");
+    await screenshot("mobile-mech-analysis.png");
+    await click('[data-action="zoom-image"]');
+    assert.ok(await cdp.evaluate("document.querySelector('#image-dialog').open"), "点击配图可放大");
+    await click('#image-dialog [data-close-dialog]');
+    await click('[data-action="rate"][data-rating="good"]');
+    passed("综合分析题配图、答案解析与放大查看");
+
+    await click('.bottom-nav [data-nav="home"]');
+    assert.equal(await cdp.evaluate("document.querySelectorAll('.subject-grid .subject-card').length"), 2);
+    assert.ok((await cdp.evaluate("document.querySelector('.subject-grid .subject-card.is-active').textContent")).includes("机械工程材料"));
+    await click('[data-action="switch-subject"][data-subject="mayuan"]');
+    assert.ok((await cdp.evaluate("document.querySelector('#brand-name').textContent")).includes("马原"));
+    const mayuanAfter = await storedState();
+    assert.deepEqual(mayuanAfter.questions, mayuanBefore.questions, "切回马原后进度应与切换前完全一致");
+    assert.ok(Object.keys(mayuanAfter.questions).length > 0, "马原题库仍有学习记录");
+    const mechState = await cdp.evaluate("JSON.parse(localStorage.getItem('question-bank:mech:v1'))");
+    assert.ok(mechState && Object.keys(mechState.questions).length > 0, "机械题库进度独立保存");
+    passed("双题库进度互相隔离，切回马原不丢失进度");
+
     await metrics(768, 1024, false);
     await noOverflow("768px 首页");
     await screenshot("tablet-home.png");

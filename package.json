@@ -1,12 +1,12 @@
 {
-  "name": "mayuan-memory",
+  "name": "memory-cabin",
   "version": "1.0.0",
   "private": true,
-  "description": "马克思主义基本原理背诵与盲考网站",
+  "description": "马克思主义基本原理与机械工程材料双题库背诵与盲考网站",
   "scripts": {
     "start": "node server.js",
-    "test": "node --test tests",
+    "test": "node --test tests/*.test.js",
     "test:e2e": "node tests/e2e.js",
-    "check": "node --check js/core.js && node --check js/app.js && node --check server.js && node --check sw.js && node --check tests/e2e.js"
+    "check": "node --check js/core.js && node --check js/app.js && node --check server.js && node --check sw.js && node --check tests/e2e.js && node --check data/questions.js && node --check data/mech.js"
   }
 }

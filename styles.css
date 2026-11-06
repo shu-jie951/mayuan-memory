@@ -356,7 +356,8 @@
   .verdict svg { inline-size: 18px; block-size: 18px; flex: none; }
   .verdict--correct { background: var(--success-soft); color: var(--success); }
   .verdict--wrong { background: var(--danger-soft); color: var(--danger); }
-  .exam-confirm { margin-top: 20px; display: flex; justify-content: flex-end; }
+  .exam-confirm { margin-top: 20px; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 12px; }
+  .exam-confirm small { color: var(--text-tertiary); font-size: var(--font-xs); }
   .answer-gate { display: flex; flex-direction: column; align-items: center; gap: 12px; margin-top: 32px; padding: 28px; border: 1px dashed var(--border-strong); border-radius: var(--radius-md); background: var(--surface-soft); text-align: center; }
   .answer-gate svg { inline-size: 24px; block-size: 24px; color: var(--brand); }
   .answer-gate p { color: var(--text-secondary); }
@@ -456,6 +457,7 @@
   .sheet-number.is-current { outline: 2px solid var(--brand); outline-offset: 2px; }
   .sheet-number.is-flagged::after { content: ""; position: absolute; inset-block-start: 2px; inset-inline-end: 2px; inline-size: 5px; block-size: 5px; border-radius: 50%; background: var(--accent); }
   .sheet-submit { inline-size: 100%; margin-top: 20px; }
+  .answer-sheet .sheet-close { display: none; }
   .mobile-sheet-button { display: none; }
   .result-hero { display: flex; flex-direction: column; align-items: center; padding: 40px 24px; text-align: center; }
   .result-score { display: grid; place-items: center; inline-size: 144px; block-size: 144px; margin-bottom: 24px; border: 10px solid var(--brand-soft); border-radius: 50%; color: var(--brand-strong); font-size: 44px; font-weight: 700; }
@@ -647,6 +649,120 @@
     .segmented { align-self: flex-start; }
     .shortcut-list { grid-template-columns: 1fr; }
     .dialog { padding: 20px; border-radius: var(--radius-lg); }
+  }
+  /* ---------- 双学科题库 ---------- */
+  :root[data-subject="mech"] {
+    --brand: #1d5478;
+    --brand-strong: #16405c;
+    --brand-soft: #e2eef6;
+    --brand-faint: #f0f6fb;
+  }
+  :root[data-theme="dark"][data-subject="mech"] {
+    --brand: #5fa3d4;
+    --brand-strong: #93c4e6;
+    --brand-soft: #1b2f3e;
+    --brand-faint: #16242f;
+  }
+  .subject-switch { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 6px; border-radius: var(--radius-md); background: var(--surface-soft); }
+  .subject-chip { display: flex; align-items: center; justify-content: space-between; gap: 4px; padding: 8px 10px; border: 1px solid transparent; border-radius: var(--radius-sm); background: transparent; color: var(--text-secondary); font-size: var(--font-sm); cursor: pointer; transition: background var(--motion-fast), color var(--motion-fast), border-color var(--motion-fast); }
+  .subject-chip strong { font-weight: 600; }
+  .subject-chip small { color: var(--text-tertiary); font-size: 11px; font-variant-numeric: tabular-nums; }
+  .subject-chip.is-active { border-color: color-mix(in srgb, var(--brand) 30%, var(--border)); background: var(--surface); color: var(--brand-strong); box-shadow: 0 1px 2px rgb(0 0 0 / 6%); }
+  .subject-chip.is-active small { color: var(--brand); }
+  .subject-switch--compact { display: none; }
+  .subject-panel { display: grid; gap: 16px; }
+  .subject-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+  .subject-card { display: flex; align-items: center; gap: 14px; padding: 16px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); text-align: start; cursor: pointer; transition: border-color var(--motion-fast), background var(--motion-fast), transform var(--motion-fast); }
+  .subject-card.is-active { border-color: color-mix(in srgb, var(--brand) 40%, var(--border)); background: var(--brand-faint); }
+  .subject-card__mark { display: grid; place-items: center; flex: none; inline-size: 42px; block-size: 42px; border-radius: 12px; background: var(--brand-soft); color: var(--brand-strong); font-size: var(--font-lg); font-weight: 700; }
+  .subject-card__body { display: grid; gap: 6px; flex: 1; min-width: 0; }
+  .subject-card__body strong { font-size: var(--font-sm); }
+  .subject-card__body small { color: var(--text-tertiary); font-size: 11px; line-height: 1.5; }
+  .subject-card__meta { color: var(--text-tertiary); font-size: var(--font-xs); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .badge--type { background: var(--brand-soft); color: var(--brand-strong); }
+
+  /* ---------- 题干配图与表格 ---------- */
+  .question-figure { margin: 20px 0 0; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-md); background: #ffffff; }
+  .question-figure img { inline-size: 100%; max-block-size: 460px; object-fit: contain; cursor: zoom-in; }
+  .question-figure figcaption { margin-top: 8px; color: var(--text-tertiary); font-size: var(--font-xs); text-align: center; }
+  .table-wrap { margin-top: 20px; overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius-md); }
+  .data-table { inline-size: 100%; border-collapse: collapse; font-size: var(--font-sm); }
+  .data-table th, .data-table td { padding: 10px 12px; border-bottom: 1px solid var(--border); text-align: start; }
+  .data-table th { background: var(--surface-soft); color: var(--text-secondary); font-weight: 600; white-space: nowrap; }
+  .data-table tr:last-child td { border-bottom: 0; }
+  .dialog--image { inline-size: min(96vw, 1100px); max-height: 92dvh; }
+  .dialog--image img { inline-size: 100%; height: auto; border-radius: var(--radius-md); background: #ffffff; }
+
+  /* ---------- 填空题 ---------- */
+  .question-text--blank { line-height: 2.4; }
+  .blank-slot { display: inline-flex; align-items: center; gap: 4px; margin: 0 2px; vertical-align: middle; }
+  .blank-slot__index { display: inline-grid; place-items: center; inline-size: 18px; block-size: 18px; border-radius: 999px; background: var(--brand-soft); color: var(--brand-strong); font-size: 11px; font-weight: 600; }
+  .blank-input { inline-size: 110px; min-height: 34px; padding: 4px 10px; border: 1px solid var(--border-strong); border-bottom-width: 2px; border-radius: var(--radius-sm); background: var(--surface); color: var(--text); font-size: var(--font-sm); text-align: center; }
+  .blank-input:focus { outline: 2px solid color-mix(in srgb, var(--brand) 40%, transparent); outline-offset: 1px; border-color: var(--brand); }
+  .blank-input.is-correct { border-color: var(--success); background: var(--success-soft); color: var(--success); }
+  .blank-input.is-wrong { border-color: var(--danger); background: var(--danger-soft); color: var(--danger); }
+  .blank-input:disabled { opacity: 1; -webkit-text-fill-color: currentColor; }
+  .blank-grid { display: grid; gap: 12px; margin-top: 20px; }
+  .blank-field { display: grid; gap: 6px; font-size: var(--font-xs); color: var(--text-tertiary); }
+  .blank-field .blank-input { inline-size: 100%; text-align: start; }
+  .blank-answer-list { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+  .blank-answer-list li { display: flex; gap: 12px; align-items: baseline; padding: 10px 14px; border-radius: var(--radius-sm); background: var(--surface); }
+  .blank-answer-list span { flex: none; color: var(--text-tertiary); font-size: var(--font-xs); }
+  .blank-answer-list strong { color: var(--brand-strong); font-size: var(--font-md); }
+
+  /* ---------- 判断题 ---------- */
+  .judge-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 24px; }
+  .judge-button { position: relative; display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 64px; padding: 12px 16px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); color: var(--text-secondary); font-size: var(--font-md); font-weight: 600; cursor: pointer; transition: border-color var(--motion-fast), background var(--motion-fast), color var(--motion-fast); }
+  .judge-button:disabled { cursor: default; }
+  .judge-button__letter { display: inline-grid; place-items: center; inline-size: 26px; block-size: 26px; border: 1px solid var(--border-strong); border-radius: 50%; font-size: var(--font-xs); }
+  .judge-button.is-picked { border-color: var(--brand); background: var(--brand-faint); color: var(--text); }
+  .judge-button.is-picked .judge-button__letter { border-color: var(--brand); background: var(--brand); color: var(--surface); }
+  .judge-button.is-answer { border-color: var(--success); background: var(--success-soft); color: var(--success); }
+  .judge-button.is-answer .judge-button__letter { border-color: var(--success); background: var(--success); color: #ffffff; }
+  .judge-button.is-wrong-answer { border-color: var(--danger); background: var(--danger-soft); color: var(--danger); }
+  .judge-button.is-wrong-answer .judge-button__letter { border-color: var(--danger); background: var(--danger); color: #ffffff; }
+  .judge-button .option-flag { position: static; margin-inline-start: 4px; }
+  .judge-static { margin-top: 16px; color: var(--text-secondary); font-size: var(--font-sm); }
+  .judge-static strong { color: var(--success); }
+
+  /* ---------- 解析与勘误 ---------- */
+  .explain-stack { display: grid; gap: 12px; margin-top: 18px; }
+  .explain-block { padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); }
+  .explain-block__label { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; font-size: var(--font-xs); font-weight: 700; letter-spacing: .06em; }
+  .explain-block__label svg { inline-size: 15px; block-size: 15px; }
+  .explain-block__body { color: var(--text-secondary); font-size: var(--font-sm); line-height: 1.85; white-space: pre-line; overflow-wrap: anywhere; }
+  .explain-block--analysis { border-color: color-mix(in srgb, var(--brand) 30%, var(--border)); background: color-mix(in srgb, var(--brand-faint) 70%, var(--surface)); }
+  .explain-block--analysis .explain-block__label { color: var(--brand-strong); }
+  .explain-block--erratum { border-color: color-mix(in srgb, var(--accent) 35%, var(--border)); background: var(--accent-soft); }
+  .explain-block--erratum .explain-block__label { color: var(--accent); }
+  .explain-block summary { display: flex; align-items: center; gap: 6px; color: var(--text-tertiary); font-size: var(--font-xs); font-weight: 600; cursor: pointer; list-style: none; }
+  .explain-block summary::-webkit-details-marker { display: none; }
+  .explain-block summary svg { inline-size: 15px; block-size: 15px; }
+  .explain-block summary::after { content: "展开"; margin-inline-start: auto; color: var(--text-tertiary); font-weight: 400; }
+  .explain-block[open] summary::after { content: "收起"; }
+  .explain-block[open] .explain-block__body { margin-top: 10px; }
+  .explain-block--stale { border-style: dashed; background: var(--surface-soft); }
+
+  @media (max-width: 1100px) {
+    .subject-switch--compact { display: grid; }
+    .subject-switch { display: none; }
+    .topbar__actions .subject-switch--compact { display: grid; grid-template-columns: auto auto; padding: 4px; }
+    .topbar__actions .subject-chip { padding: 6px 8px; font-size: var(--font-xs); }
+    .topbar__actions .subject-chip small { display: none; }
+  }
+  @media (max-width: 800px) {
+    .question-card__badges .badge--type { display: inline-flex; }
+    .answer-sheet.is-open { display: block; position: fixed; z-index: 40; inset: auto 12px 84px; max-height: 64dvh; overflow: auto; box-shadow: var(--shadow-raised); }
+    .answer-sheet.is-open .sheet-close { display: inline-flex; }
+    .answer-sheet.is-mobile-open { display: block; position: fixed; z-index: 40; inset: auto 12px 84px; max-height: 64dvh; overflow: auto; box-shadow: var(--shadow-raised); }
+    .blank-input { inline-size: 84px; }
+    .judge-row { grid-template-columns: 1fr; }
+    .question-figure img { max-block-size: 320px; }
+  }
+  @media (max-width: 520px) {
+    .subject-card { padding: 12px; gap: 10px; }
+    .subject-card__body small { display: none; }
+    .topbar__actions .subject-switch--compact { grid-template-columns: auto auto; }
   }
   @media (hover: hover) and (pointer: fine) {
     .nav-item:hover { background: var(--surface-soft); color: var(--text); }
