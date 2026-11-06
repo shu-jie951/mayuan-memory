@@ -7,7 +7,10 @@
 
   const DAY = 86400000;
   const STORAGE_KEY = "mayuan-memory-v1";
+  const STORAGE_PREFIX = "question-bank";
   const RATINGS = new Set(["again", "hard", "good", "easy"]);
+  const AUTO_KINDS = new Set(["choice", "judge", "blank"]);
+  const QUESTION_ID = /^[a-z]\d{3,5}$/;
 
   function clamp(value, min, max, fallback = min) {
     const number = Number(value);
@@ -21,12 +24,17 @@
     return `${date.getFullYear()}-${month}-${day}`;
   }
 
+  function storageKey(bankId) {
+    if (!bankId || bankId === "mayuan") return STORAGE_KEY;
+    return `${STORAGE_PREFIX}:${bankId}:v1`;
+  }
+
   function createDefaultState(now = Date.now()) {
     return {
-      version: 1,
+      version: 2,
       questions: {},
-      settings: { theme: "system", fontSize: "standard", examCount: 20, examMinutes: 0, dailyGoal: 20 },
-      positions: { choice: "", subjective: "" },
+      settings: { theme: "system", fontSize: "standard", examCount: 20, examMinutes: 0, dailyGoal: 20, lastBank: "mayuan" },
+      positions: {},
       activity: {},
       examHistory: [],
       activeExam: null,
@@ -67,19 +75,24 @@
     };
   }
 
+  // 选择题记录选项字母；填空题记录逐空文本，统一用字符串数组承载。
   function sanitizeAnswers(value) {
     if (!value || typeof value !== "object") return {};
     const answers = {};
     for (const [id, selected] of Object.entries(value)) {
-      if (!/^c\d{4}$/.test(id) || !Array.isArray(selected)) continue;
-      answers[id] = [...new Set(selected.filter(letter => /^[A-H]$/.test(letter)))].sort();
+      if (!QUESTION_ID.test(id) || !Array.isArray(selected)) continue;
+      const items = selected
+        .filter(item => typeof item === "string")
+        .map(item => item.trim().slice(0, 60))
+        .filter(Boolean);
+      answers[id] = [...new Set(items)];
     }
     return answers;
   }
 
   function sanitizeExam(value, validIds) {
     if (!value || typeof value !== "object" || !Array.isArray(value.questionIds)) return null;
-    const questionIds = [...new Set(value.questionIds.filter(id => validIds.has(id) && id.startsWith("c")))];
+    const questionIds = [...new Set(value.questionIds.filter(id => validIds.has(id)))];
     if (!questionIds.length) return null;
     const answers = sanitizeAnswers(value.answers);
     const graded = {};
@@ -113,7 +126,11 @@
       }
     }
     const settings = input.settings && typeof input.settings === "object" ? input.settings : {};
-    const positions = input.positions && typeof input.positions === "object" ? input.positions : {};
+    const rawPositions = input.positions && typeof input.positions === "object" ? input.positions : {};
+    const positions = {};
+    for (const [mode, id] of Object.entries(rawPositions)) {
+      if (/^[a-z]{3,20}$/.test(mode) && typeof id === "string" && validIds.has(id)) positions[mode] = id;
+    }
     const activity = {};
     if (input.activity && typeof input.activity === "object") {
       for (const [key, value] of Object.entries(input.activity)) {
@@ -122,7 +139,7 @@
     }
     const history = Array.isArray(input.examHistory) ? input.examHistory.slice(0, 20).map(record => {
       if (!record || typeof record !== "object" || !Array.isArray(record.questionIds)) return null;
-      const questionIds = record.questionIds.filter(id => validIds.has(id) && id.startsWith("c"));
+      const questionIds = record.questionIds.filter(id => validIds.has(id));
       if (!questionIds.length) return null;
       const correct = Math.round(clamp(record.correct, 0, questionIds.length, 0));
       return {
@@ -144,14 +161,12 @@
       settings: {
         theme: ["system", "light", "dark"].includes(settings.theme) ? settings.theme : "system",
         fontSize: ["compact", "standard", "large"].includes(settings.fontSize) ? settings.fontSize : "standard",
-        examCount: Math.round(clamp(settings.examCount, 1, 421, 20)),
+        examCount: Math.round(clamp(settings.examCount, 1, 500, 20)),
         examMinutes: Math.round(clamp(settings.examMinutes, 0, 300, 0)),
         dailyGoal: Math.round(clamp(settings.dailyGoal, 5, 200, 20)),
+        lastBank: String(settings.lastBank || "mayuan").slice(0, 24),
       },
-      positions: {
-        choice: validIds.has(positions.choice) ? positions.choice : "",
-        subjective: validIds.has(positions.subjective) ? positions.subjective : "",
-      },
+      positions,
       activity,
       examHistory: history,
       activeExam: sanitizeExam(input.activeExam, validIds),
@@ -216,10 +231,49 @@
     };
   }
 
+  function isAutoGraded(question) {
+    return Boolean(question) && AUTO_KINDS.has(question.kind);
+  }
+
   function sameAnswers(selected, answer) {
-    if (!Array.isArray(selected) || selected.length !== answer.length) return false;
+    if (!Array.isArray(selected) || !Array.isArray(answer) || selected.length !== answer.length) return false;
     const normalized = [...selected].sort();
-    return answer.every((letter, index) => normalized[index] === letter);
+    const target = [...answer].sort();
+    return target.every((letter, index) => normalized[index] === letter);
+  }
+
+  // 填空题按空逐个比对，忽略空白、全半角与常见标点差异。
+  function normalizeBlank(text) {
+    return String(text ?? "")
+      .replace(/[\uff01-\uff5e]/g, character => String.fromCharCode(character.charCodeAt(0) - 0xfee0))
+      .replace(/[\s\u3000]/g, "")
+      .replace(/[。，、；：·,.;:'"“”‘’()（）]/g, "")
+      .toLowerCase();
+  }
+
+  function matchBlank(question, response) {
+    const expected = Array.isArray(question.blanks) ? question.blanks : [];
+    if (!expected.length) return { correct: false, hits: [] };
+    const given = Array.isArray(response) ? response : [];
+    const hits = expected.map((item, index) => {
+      const candidates = String(item).split(/[；;]|或/).map(part => normalizeBlank(part)).filter(Boolean);
+      const value = normalizeBlank(given[index]);
+      if (!value) return false;
+      return candidates.some(candidate => candidate === value || (candidate.length > 3 && value.includes(candidate)));
+    });
+    return { correct: hits.every(Boolean), hits };
+  }
+
+  function gradeAnswer(question, response) {
+    if (!question) return { correct: false, auto: false, hits: [] };
+    if (question.kind === "blank") {
+      const result = matchBlank(question, response);
+      return { correct: result.correct, auto: true, hits: result.hits };
+    }
+    if (question.kind === "choice" || question.kind === "judge") {
+      return { correct: sameAnswers(Array.isArray(response) ? response : [], question.answer), auto: true, hits: [] };
+    }
+    return { correct: false, auto: false, hits: [] };
   }
 
   function weightedSample(items, count, state, rng) {
@@ -246,40 +300,50 @@
     return selected;
   }
 
+  function shuffle(items, rng) {
+    const list = [...items];
+    for (let i = list.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(rng() * (i + 1));
+      [list[i], list[j]] = [list[j], list[i]];
+    }
+    return list;
+  }
+
+  // 盲考只取可自动判分的题型；智能模式按各题型实际比例分配名额。
   function selectExamQuestions(pool, state, count = 20, strategy = "smart", rng = Math.random) {
-    const choices = pool.filter(question => question.kind === "choice");
-    const target = Math.min(Math.max(0, Math.round(count)), choices.length);
+    const eligible = pool.filter(isAutoGraded);
+    const target = Math.min(Math.max(0, Math.round(count)), eligible.length);
     if (!target) return [];
-    if (strategy === "sequential") return choices.slice(0, target);
-    if (strategy === "random") {
-      const shuffled = [...choices];
-      for (let i = shuffled.length - 1; i > 0; i -= 1) {
-        const j = Math.floor(rng() * (i + 1));
-        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-      }
-      return shuffled.slice(0, target);
+    if (strategy === "sequential") return eligible.slice(0, target);
+    if (strategy === "random") return shuffle(eligible, rng).slice(0, target);
+
+    const groups = new Map();
+    eligible.forEach(question => {
+      const key = question.type || question.kind;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(question);
+    });
+    const keys = [...groups.keys()];
+    const quotas = keys.map(key => ({
+      key,
+      quota: Math.max(1, Math.round(target * groups.get(key).length / eligible.length)),
+    }));
+    let sum = quotas.reduce((total, item) => total + item.quota, 0);
+    while (sum > target) {
+      const largest = quotas.filter(item => item.quota > 1).sort((a, b) => b.quota - a.quota)[0];
+      if (!largest) break;
+      largest.quota -= 1;
+      sum -= 1;
     }
-    const singles = choices.filter(question => question.type === "single");
-    const multiples = choices.filter(question => question.type === "multiple");
-    let multipleTarget = Math.round(target * multiples.length / choices.length);
-    if (singles.length && multiples.length && target > 1) {
-      multipleTarget = Math.max(1, Math.min(target - 1, multipleTarget));
-    }
-    multipleTarget = Math.min(multipleTarget, multiples.length);
-    const singleTarget = Math.min(target - multipleTarget, singles.length);
-    const selected = [
-      ...weightedSample(singles, singleTarget, state, rng),
-      ...weightedSample(multiples, multipleTarget, state, rng),
-    ];
+    const selected = [];
+    quotas.forEach(({ key, quota }) => {
+      selected.push(...weightedSample(groups.get(key), Math.min(quota, groups.get(key).length), state, rng));
+    });
     if (selected.length < target) {
       const ids = new Set(selected.map(question => question.id));
-      selected.push(...weightedSample(choices.filter(question => !ids.has(question.id)), target - selected.length, state, rng));
+      selected.push(...weightedSample(eligible.filter(question => !ids.has(question.id)), target - selected.length, state, rng));
     }
-    for (let i = selected.length - 1; i > 0; i -= 1) {
-      const j = Math.floor(rng() * (i + 1));
-      [selected[i], selected[j]] = [selected[j], selected[i]];
-    }
-    return selected;
+    return shuffle(selected, rng);
   }
 
   function gradeExam(exam, questionMap) {
@@ -287,7 +351,7 @@
     let correct = 0;
     for (const id of exam.questionIds) {
       const question = questionMap instanceof Map ? questionMap.get(id) : questionMap[id];
-      if (question && sameAnswers(exam.answers[id], question.answer)) correct += 1;
+      if (question && gradeAnswer(question, exam.answers[id] || []).correct) correct += 1;
       else wrongIds.push(id);
     }
     return { correct, wrongIds, total: exam.questionIds.length, accuracy: exam.questionIds.length ? Math.round(correct / exam.questionIds.length * 100) : 0 };
@@ -353,8 +417,9 @@
   }
 
   return {
-    DAY, STORAGE_KEY, createDefaultState, defaultQuestionState, normalizeState,
+    DAY, STORAGE_KEY, storageKey, createDefaultState, defaultQuestionState, normalizeState,
     getQuestionState, nextSchedule, reviewQuestion, toggleFavorite, sameAnswers,
+    isAutoGraded, gradeAnswer, matchBlank, normalizeBlank,
     selectExamQuestions, gradeExam, submitExam, getStats, dateKey,
   };
 });
